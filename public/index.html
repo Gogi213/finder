@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Binance Bid Patterns Detector</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div id="container">
+    <header>
+      <h1>Bid Patterns Detector</h1>
+      <div id="controls">
+        <div id="lsHighlightControl" style="display:inline-block; margin-right:16px;">
+          <label for="lsHighlightValue" style="font-size:0.95em;opacity:0.7;">L/S ≥</label>
+          <input id="lsHighlightValue" type="number" min="1" max="99" step="0.1" value="3" style="width:3em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
+        </div>
+        <div id="deltaHighlightControl" style="display:inline-block; margin-right:16px;">
+          <label for="deltaHighlightValue" style="font-size:0.95em;opacity:0.7;">Delta ≥</label>
+          <input id="deltaHighlightValue" type="number" min="-999999" max="999999" step="1" value="1000" style="width:4em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
+        </div>
+        <button id="btnStart" class="btn">Старт</button>
+        <button id="btnStop" class="btn btn--danger" disabled>Стоп</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Секция «Список монет» -->
+      <section class="panel fixed-coinlist">
+        <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <h2 style="margin:0;">Список монет</h2>
+          <button id="btnAllCoins" class="btn btn--small">Показать все</button>
+        </div>
+        <div class="table-wrap table-wrap--small">
+          <table id="coinList">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="symbol">Монета</th>
+                <th class="sortable" data-key="lsRatio">L/S</th>
+                <th class="sortable" data-key="totalVol">Vol (USD)</th>
+                <th class="sortable" data-key="buyCnt">BuyCnt</th>
+                <th class="sortable" data-key="sellCnt">SellCnt</th>
+                <th class="sortable" data-key="avgSize">AvgSize</th>
+                <th class="sortable" data-key="natr">NATR</th>
+                <th class="sortable" data-key="delta">Delta</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Секция «Паттерны бидов» -->
+      <section class="panel">
+        <h2>Паттерны бидов</h2>
+        <div class="table-wrap table-wrap--large">
+          <table id="patternList">
+            <thead>
+              <tr>
+                <th class="sortable" data-key="time">Время</th>
+                <th class="sortable" data-key="symbol">Монета</th>
+                <th class="sortable" data-key="price">Цена</th>
+                <th class="sortable" data-key="volume">Объём(coin)</th>
+                <th class="sortable" data-key="volumeUsd">Объём ($)</th>
+                <th class="sortable" data-key="lsRatio">L/S</th>
+              </tr>
+            </thead>
+            <tbody id="patterns"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/client/app.js"></script>
+</body>
+</html>
