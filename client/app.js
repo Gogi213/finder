@@ -1,5 +1,3 @@
-const btnStart      = document.getElementById('btnStart');
-const btnStop       = document.getElementById('btnStop');
 const btnAllCoins   = document.getElementById('btnAllCoins');
 const patternsTbody = document.getElementById('patterns');
 const coinList      = document.getElementById('coinList');
@@ -17,6 +15,7 @@ let currentCoinSort    = { key: 'lsRatio', direction: 'desc' };
 let activeCoinFilter = null;
 let lsHighlightValue = 3;
 let deltaHighlightValue = 1000;
+let selectedCoins = [];
 
 // WS управление
 function startWS() {
@@ -24,8 +23,6 @@ function startWS() {
   ws = new WebSocket('ws://localhost:3000');
   ws.onopen  = () => {
     running = true;
-    btnStart.disabled = true;
-    btnStop.disabled  = false;
   };
   ws.onmessage = e => handleMessage(JSON.parse(e.data));
   ws.onclose   = () => stopWS();
@@ -34,8 +31,6 @@ function startWS() {
 function stopWS() {
   if (!running) return;
   running = false;
-  btnStart.disabled = false;
-  btnStop.disabled  = true;
   ws && ws.close();
 }
 
@@ -64,38 +59,85 @@ function sortBy(arr, sort) {
 
 // Рендер списка монет
 function renderCoinList() {
-  // Добавляем/убираем класс filtered на thead
+  const list = Object.values(coinMetrics);
   const thead = coinList.querySelector('thead');
   if (activeCoinFilter) {
     thead.classList.add('filtered');
   } else {
     thead.classList.remove('filtered');
   }
-
-  const list = Object.values(coinMetrics);
   const sorted = sortBy(list, currentCoinSort);
-  coinListTbody.innerHTML = '';
 
-  sorted.forEach(m => {
-    const tr = document.createElement('tr');
-    if (m.symbol === activeCoinFilter) tr.classList.add('active');
-    tr.onclick = () => {
-      activeCoinFilter = (activeCoinFilter === m.symbol ? null : m.symbol);
-      renderCoinList();
-      renderPatternTable();
-    };
-    tr.innerHTML = `
-      <td>${m.symbol.toUpperCase()}</td>
-      <td class="ls-cell${(+m.lsRatio >= lsHighlightValue && isFinite(+m.lsRatio) ? ' ls-highlight' : '')}">${m.lsRatio}</td>
-      <td>${m.totalVol}</td>
-      <td>${m.buyCnt}</td>
-      <td>${m.sellCnt}</td>
-      <td>${m.avgSize}</td>
-      <td>${m.natr}</td>
-      <td class="delta-cell${(+m.delta >= deltaHighlightValue && isFinite(+m.delta) ? ' delta-highlight' : '')}">${m.delta}</td>
-    `;
-    coinListTbody.appendChild(tr);
+  // Progressive update: обновляем только содержимое строк, не пересоздаём их полностью
+  // Если количество строк не совпадает — пересоздаём всё
+  if (coinListTbody.children.length !== sorted.length) {
+    coinListTbody.innerHTML = '';
+    sorted.forEach(m => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="coin-symbol-cell" style="cursor:pointer;"></td>
+        <td class="ls-cell"></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="delta-cell"></td>
+      `;
+      coinListTbody.appendChild(tr);
+    });
+  }
+  // Теперь обновляем содержимое и классы
+  Array.from(coinListTbody.children).forEach((tr, i) => {
+    const m = sorted[i];
+    if (!m) return;
+    // Классы
+    if (selectedCoins.includes(m.symbol)) tr.classList.add('active');
+    else tr.classList.remove('active');
+    // Ячейки
+    const tds = tr.children;
+    tds[0].textContent = m.symbol.toUpperCase();
+    tds[0].className = 'coin-symbol-cell';
+    tds[0].style.cursor = 'pointer';
+    tds[1].textContent = m.lsRatio;
+    tds[1].className = 'ls-cell' + ((+m.lsRatio >= lsHighlightValue && isFinite(+m.lsRatio)) ? ' ls-highlight' : '');
+    tds[2].textContent = m.buyCnt;
+    tds[3].textContent = m.sellCnt;
+    tds[4].textContent = m.natr;
+    tds[5].textContent = m.delta;
+    tds[5].className = 'delta-cell' + ((+m.delta >= deltaHighlightValue && isFinite(+m.delta)) ? ' delta-highlight' : '');
+    // Обработчики (навешиваем только один раз)
+    if (!tr._handlersSet) {
+      tr.addEventListener('mousedown', (e) => {
+        if (e.button === 0 || e.button === 1) {
+          // Получаем символ из DOM, а не из замыкания/индекса
+          const symbol = tr.querySelector('.coin-symbol-cell').textContent.trim();
+          if (selectedCoins.includes(symbol)) {
+            selectedCoins = selectedCoins.filter(s => s !== symbol);
+          } else {
+            selectedCoins.push(symbol);
+          }
+          renderCoinList();
+          renderPatternTable();
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+      tds[0].addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(m.symbol.toUpperCase())
+          .then(() => {
+            tds[0].style.background = 'rgba(76,175,80,0.25)';
+            setTimeout(() => tds[0].style.background = '', 350);
+          });
+      });
+      tr._handlersSet = true;
+    }
   });
+  // Кнопка "Показать все"
+  if (selectedCoins.length > 0) {
+    btnAllCoins.classList.add('btn--blue');
+  } else {
+    btnAllCoins.classList.remove('btn--blue');
+  }
 }
 
 // Обработка паттернов
@@ -121,30 +163,70 @@ function addPattern(data) {
   }
 }
 
+// Вспомогательная функция для перевода времени (HH:MM:SS) из UTC в локальное время пользователя
+function toLocalTime(timeStr) {
+  // timeStr: 'HH:MM:SS' (UTC)
+  const [h, m, s] = timeStr.split(':').map(Number);
+  const now = new Date();
+  // Создаём дату в UTC с сегодняшним днём
+  const utcDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, m, s));
+  return utcDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 // Рендер таблицы паттернов
 function renderPatternTable() {
-  let data = activeCoinFilter
-    ? patterns.filter(p => p.symbol === activeCoinFilter)
+  let data = selectedCoins.length > 0
+    ? patterns.filter(p => selectedCoins.includes(p.symbol))
     : patterns;
+  // ЛОГИРОВАНИЕ для отладки
+  console.log('[renderPatternTable] Количество паттернов:', data.length);
+  if (data.length) {
+    console.log('[renderPatternTable] Символы:', data.map(p => p.symbol));
+    data.forEach(p => {
+      console.log(`[renderPatternTable] ${p.symbol}: time=${p.time}, price=${p.price}, volume=${p.volume}, volumeUsd=${p.volumeUsd}, lsRatio=${p.lsRatio}, count=${p.count}`);
+    });
+  } else {
+    console.log('[renderPatternTable] Нет паттернов для отображения');
+  }
   const sorted = sortBy(data, currentPatternSort);
   patternsTbody.innerHTML = '';
 
-  sorted.forEach(({ time, symbol, price, volume, volumeUsd, lsRatio, count }) => {
+  // --- Новый блок: поиск сигналов ---
+  // Для каждой монеты ищем пары подряд идущих сделок с L/S >= lsHighlightValue и разницей <= 30 сек
+  const signalIndexes = new Set();
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i];
+    const b = sorted[i + 1];
+    if (
+      a.symbol === b.symbol &&
+      +a.lsRatio >= lsHighlightValue &&
+      +b.lsRatio >= lsHighlightValue &&
+      Math.abs((+a.timeStamp - +b.timeStamp)) <= 30000
+    ) {
+      signalIndexes.add(i);
+      signalIndexes.add(i + 1);
+    }
+  }
+
+  sorted.forEach(({ time, symbol, price, volume, volumeUsd, lsRatio, count, timeStamp }, idx) => {
     const tr = document.createElement('tr');
+    let signalClass = signalIndexes.has(idx) ? ' signal-row' : '';
     tr.innerHTML = `
-      <td>${time}</td>
+      <td>${toLocalTime(time)}</td>
       <td class="symbol">${symbol.toUpperCase()}</td>
       <td>${price.toFixed(6)}</td>
       <td>${volume}${count > 1 ? ` (${count})` : ''}</td>
       <td>${volumeUsd}</td>
       <td class="ls-cell${(+lsRatio >= lsHighlightValue && isFinite(+lsRatio) ? ' ls-highlight' : '')}">${(+lsRatio).toFixed(2)}</td>
     `;
+    if (signalClass) tr.classList.add('signal-row');
     patternsTbody.appendChild(tr);
   });
 }
 
 // Обработчики клика по заголовкам (они теперь независимы)
 document.addEventListener('DOMContentLoaded', () => {
+  startWS(); // Автоматически открываем сокет при загрузке страницы
   // Сортировка в списке монет
   coinList.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => {
@@ -226,10 +308,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Кнопки управления
-btnStart.addEventListener('click', startWS);
-btnStop.addEventListener('click', stopWS);
 btnAllCoins.addEventListener('click', () => {
-  activeCoinFilter = null;
+  selectedCoins = [];
   renderCoinList();
   renderPatternTable();
 });

@@ -27,6 +27,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   padding: 20px;
+  font-size: 0.85rem; /* уменьшено с 1rem */
 }
 
 #container {
@@ -50,12 +51,12 @@ header {
 }
 
 header h1 {
-  font-size: 1.5rem;
+  font-size: 1.15rem; /* уменьшено */
   color: var(--accent);
 }
 
 .btn {
-  padding: 8px 16px;
+  padding: 6px 12px; /* уменьшено */
   background: var(--accent);
   border: none;
   border-radius: 4px;
@@ -63,6 +64,7 @@ header h1 {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
+  font-size: 0.85rem; /* уменьшено */
 }
 
 .btn:disabled {
@@ -83,8 +85,17 @@ header h1 {
 }
 
 .btn--small {
-  padding: 4px 10px;
-  font-size: 0.8rem;
+  padding: 3px 7px;
+  font-size: 0.75rem;
+}
+
+.btn--blue {
+  background: var(--highlight);
+  color: #fff;
+}
+
+.btn--blue:hover:not(:disabled) {
+  background: #0288d1;
 }
 
 main {
@@ -101,24 +112,26 @@ main {
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 15px;
+  padding: 10px; /* уменьшено */
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
+/* Удалён класс .fixed-coinlist и связанные с ним ограничения высоты */
 .panel.fixed-coinlist {
-  min-height: calc(40px * 5 + 48px + 32px);
-  max-height: calc(40px * 5 + 48px + 32px);
-  height: calc(40px * 5 + 48px + 32px);
-  box-sizing: border-box;
+  /* min-height: calc(40px * 5 + 48px + 32px); */
+  /* max-height: calc(40px * 5 + 48px + 32px); */
+  /* height: calc(40px * 5 + 48px + 32px); */
+  /* box-sizing: border-box; */
 }
 
-.panel:last-child {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+/* Для панели coinlist теперь просто .panel, без ограничений */
+
+#coinList tbody {
+  display: table-row-group;
+  max-height: none;
+  overflow-y: visible;
 }
 
 .table-wrap {
@@ -132,7 +145,7 @@ main {
   height: auto;
   border-radius: 4px;
   border: 1px solid var(--border);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .table-wrap--large {
@@ -148,10 +161,10 @@ table {
 }
 
 th, td {
-  padding: 8px 12px;
+  padding: 6px 8px; /* уменьшено */
   text-align: center;
   border-bottom: 1px solid var(--border);
-  font-size: 0.85rem;
+  font-size: 0.78rem; /* уменьшено */
 }
 
 thead {
@@ -194,13 +207,14 @@ th.sortable.active:after {
 /* Подсветка строки фильтра */
 #coinList tbody tr.active {
   background-color: rgba(3, 169, 244, 0.2);
-  font-weight: 700;
   color: var(--fg);
+  /* font-weight: 700;  убрано, чтобы не прыгала высота */
 }
 
 /* Hover */
 tbody tr:hover {
   background: rgba(76, 175, 80, 0.1);
+  /* Убрана анимация/переход, чтобы не было пульсации */
 }
 
 .symbol {
@@ -216,15 +230,9 @@ tbody tr:hover {
 }
 
 #coinList tbody {
-  display: block;
-  max-height: calc(5 * 40px); /* 5 строк данных, не включая шапку */
-  overflow-y: auto;
-}
-
-#coinList thead, #coinList tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
+  display: table-row-group;
+  max-height: none;
+  overflow-y: visible;
 }
 
 /* Подсветка L/S */
@@ -254,4 +262,14 @@ tbody tr:hover {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+#coinList tbody tr {
+  font-weight: 500; /* фиксированный вес для всех строк, чтобы не прыгала высота */
+  transition: background 0.2s, color 0.2s;
+}
+
+.signal-row {
+  background: rgba(244, 67, 54, 0.18) !important;
+  transition: background 0.2s;
 }

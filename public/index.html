@@ -20,14 +20,12 @@
           <label for="deltaHighlightValue" style="font-size:0.95em;opacity:0.7;">Delta ≥</label>
           <input id="deltaHighlightValue" type="number" min="-999999" max="999999" step="1" value="1000" style="width:4em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
         </div>
-        <button id="btnStart" class="btn">Старт</button>
-        <button id="btnStop" class="btn btn--danger" disabled>Стоп</button>
       </div>
     </header>
 
-    <main>
+    <main style="display: flex; flex-direction: row; gap: 20px; height: 100%; min-height: 0;">
       <!-- Секция «Список монет» -->
-      <section class="panel fixed-coinlist">
+      <section class="panel" style="flex: 0 0 600px; min-width: 420px; max-width: 700px; margin-bottom: 0; display: flex; flex-direction: column;">
         <div class="panel-header" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
           <h2 style="margin:0;">Список монет</h2>
           <button id="btnAllCoins" class="btn btn--small">Показать все</button>
@@ -38,10 +36,8 @@
               <tr>
                 <th class="sortable" data-key="symbol">Монета</th>
                 <th class="sortable" data-key="lsRatio">L/S</th>
-                <th class="sortable" data-key="totalVol">Vol (USD)</th>
                 <th class="sortable" data-key="buyCnt">BuyCnt</th>
                 <th class="sortable" data-key="sellCnt">SellCnt</th>
-                <th class="sortable" data-key="avgSize">AvgSize</th>
                 <th class="sortable" data-key="natr">NATR</th>
                 <th class="sortable" data-key="delta">Delta</th>
               </tr>
@@ -52,9 +48,9 @@
       </section>
 
       <!-- Секция «Паттерны бидов» -->
-      <section class="panel">
+      <section class="panel" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; height: 100%;">
         <h2>Паттерны бидов</h2>
-        <div class="table-wrap table-wrap--large">
+        <div class="table-wrap table-wrap--large" style="flex: 1 1 auto; min-height: 0;">
           <table id="patternList">
             <thead>
               <tr>

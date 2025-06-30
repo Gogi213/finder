@@ -14,6 +14,8 @@ const symbolMeta = {};          // { symbol: { natr: Number } }
 let wsClient = null;
 let reconnectAttempts = 0;
 let summaryIntervalID = null;
+let wsSymbols = [];
+let wsReconnectIntervalID = null;
 
 // Статика
 app.use(express.static(path.join(__dirname, 'public')));
@@ -56,11 +58,10 @@ async function connectBinanceWS() {
   wsClient = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${stream}`);
 
   wsClient.on('open', () => {
-    console.log('Connected to Binance WS');
+    console.log('Connected to Binance WS', new Date().toISOString());
     reconnectAttempts = 0;
-    // Если уже был запущен интервал — сбросим
-    if (summaryIntervalID) clearInterval(summaryIntervalID);
-    summaryIntervalID = setInterval(broadcastSummaries, CONFIG.SUMMARY_INTERVAL);
+    // Только ручной вызов для мгновенного обновления
+    broadcastSummaries();
   });
 
   wsClient.on('message', data => {
@@ -101,7 +102,6 @@ async function connectBinanceWS() {
   });
 
   wsClient.on('close', () => {
-    if (summaryIntervalID) clearInterval(summaryIntervalID);
     if (reconnectAttempts < CONFIG.RECONNECT_ATTEMPTS) {
       setTimeout(connectBinanceWS, 5000);
       reconnectAttempts++;
@@ -109,10 +109,77 @@ async function connectBinanceWS() {
   });
 }
 
+async function recreateBinanceWS() {
+  const newSymbols = await getFilteredSymbols();
+  // Если пул не изменился — ничего не делаем
+  if (JSON.stringify(newSymbols) === JSON.stringify(wsSymbols)) return;
+  if (newSymbols.length === 0) return;
+
+  const newStream = newSymbols.map(s => `${s}@trade`).join('/');
+  const newWS = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${newStream}`);
+
+  newWS.on('open', () => {
+    console.log('Reconnected Binance WS with new symbols', new Date().toISOString());
+    wsSymbols = newSymbols;
+    // Только ручной вызов для мгновенного обновления
+    broadcastSummaries();
+    // Закрываем старый wsClient
+    if (wsClient && wsClient.readyState === WebSocket.OPEN) wsClient.close();
+    wsClient = newWS;
+    reconnectAttempts = 0;
+  });
+
+  newWS.on('message', data => {
+    try {
+      const msg = JSON.parse(data);
+      if (!msg.data) return;
+      const { s: symbol, T: ts, q: qtyRaw, m: isMaker, p: priceRaw } = msg.data;
+      const price = parseFloat(priceRaw);
+      const qty = parseFloat(qtyRaw);
+      if (!price || !qty) return;
+      const volumeUsd = price * qty;
+      if (volumeUsd < CONFIG.MIN_VOLUME_USD) return;
+      if (!tradeVolumeStore[symbol]) {
+        tradeVolumeStore[symbol] = { buys: [], sells: [] };
+      }
+      const sideList = isMaker ? 'sells' : 'buys';
+      tradeVolumeStore[symbol][sideList].push({ timestamp: ts, volumeUsd });
+      const lsRatio = calculateLSRatio(symbol);
+      const pattern = {
+        type: 'pattern',
+        symbol,
+        time: new Date(ts).toISOString().slice(11,19),
+        timeStamp: ts,
+        price,
+        volumeUsd: volumeUsd.toFixed(2),
+        volume: qty,
+        lsRatio
+      };
+      wss.clients.forEach(c => c.readyState === WebSocket.OPEN && c.send(JSON.stringify(pattern)));
+    } catch (e) {
+      console.error('WS data error', e);
+    }
+  });
+
+  newWS.on('close', () => {
+    if (reconnectAttempts < CONFIG.RECONNECT_ATTEMPTS) {
+      reconnectAttempts++;
+      setTimeout(recreateBinanceWS, 2000);
+    }
+  });
+}
+
 // Рассылка метрик для «Списка монет»
 function broadcastSummaries() {
   const now = Date.now();
-  for (const symbol of Object.keys(tradeVolumeStore)) {
+  const nowStr = new Date(now).toISOString();
+  console.log(`[broadcastSummaries] call at ${nowStr}`);
+  const symbols = Object.keys(tradeVolumeStore);
+  console.log('[broadcastSummaries] symbols count:', symbols.length);
+  if (symbols.length) {
+    console.log('[broadcastSummaries] symbols:', symbols);
+  }
+  for (const symbol of symbols) {
     cleanupOldData(symbol);
     const data = tradeVolumeStore[symbol];
     if (!data) continue;  // пропускаем, если после очистки удалили
@@ -138,7 +205,8 @@ function broadcastSummaries() {
       natr:     natr.toFixed(2),
       delta:    delta.toFixed(2)
     };
-
+    // Лог по каждой summary
+    console.log(`[broadcastSummaries] ${symbol}: buyCnt=${buyCnt}, sellCnt=${sellCnt}, totalVol=${totalVol.toFixed(2)}, delta=${delta.toFixed(2)}, natr=${natr.toFixed(2)}, lsRatio=${lsRatio.toFixed(2)}`);
     wss.clients.forEach(c => c.readyState === WebSocket.OPEN && c.send(JSON.stringify(summary)));
   }
 }
@@ -191,8 +259,9 @@ async function getFilteredSymbols() {
           );
           const price = +tk.lastPrice;
           const natr  = calculateNATR(price, klines);
+          // Всегда обновляем NATR для всех монет
+          symbolMeta[tk.symbol] = { natr };
           if (natr >= CONFIG.MIN_NATR) {
-            symbolMeta[tk.symbol] = { natr };
             return tk.symbol.toLowerCase();
           }
         } catch {}
@@ -229,5 +298,22 @@ function calculateNATR(price, candles) {
 const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Server: http://localhost:${PORT}`);
-  connectBinanceWS();
+  recreateBinanceWS();
+  summaryIntervalID = setInterval(() => {
+    console.log('[setInterval] broadcastSummaries tick', new Date().toISOString());
+    broadcastSummaries();
+  }, CONFIG.SUMMARY_INTERVAL);
+  console.log('[setInterval] broadcastSummaries started');
+  wsReconnectIntervalID = setInterval(recreateBinanceWS, 2 * 60 * 1000);
+});
+
+// Глобальные обработчики ошибок и выхода
+process.on('uncaughtException', err => {
+  console.error('[uncaughtException]', err);
+});
+process.on('unhandledRejection', err => {
+  console.error('[unhandledRejection]', err);
+});
+process.on('exit', code => {
+  console.log('[process exit] code:', code);
 });
