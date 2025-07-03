@@ -11,5 +11,13 @@ module.exports = {
   MIN_PRICE_CHANGE_24H: -5,   // %
 
   // Интервал для рассылки summary
-  SUMMARY_INTERVAL: 1000     // 5 секунд
+  SUMMARY_INTERVAL: 1000,     // 1 секунда
+
+  // API retry settings
+  API_RETRY_ATTEMPTS: 3,
+  API_RETRY_DELAY: 5000,      // 5 секунд начальная задержка
+  API_TIMEOUT: 15000,         // 15 секунд таймаут
+  
+  // Rate limiting
+  API_RATE_LIMIT_DELAY: 1000, // 1 секунда между запросами к API
 };
