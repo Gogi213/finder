@@ -16,10 +16,137 @@ let reconnectAttempts = 0;
 let summaryIntervalID = null;
 let wsSymbols = [];
 let wsReconnectIntervalID = null;
+let lastApiCall = 0;            // Rate limiting для API вызовов
+let apiCallCount = 0;           // Счетчик API вызовов
 
 // Статика
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/client', express.static(path.join(__dirname, 'client')));
+
+// Утилиты для обработки ошибок и повторных попыток
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function apiCallWithRetry(apiFunction, retries = CONFIG.API_RETRY_ATTEMPTS) {
+  // Rate limiting
+  const now = Date.now();
+  if (now - lastApiCall < CONFIG.API_RATE_LIMIT_DELAY) {
+    await sleep(CONFIG.API_RATE_LIMIT_DELAY - (now - lastApiCall));
+  }
+  lastApiCall = Date.now();
+  apiCallCount++;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`[API Call #${apiCallCount}] Attempt ${attempt}/${retries}`);
+      const result = await apiFunction();
+      console.log(`[API Call #${apiCallCount}] Success on attempt ${attempt}`);
+      return result;
+    } catch (error) {
+      console.log(`[API Call #${apiCallCount}] Failed attempt ${attempt}/${retries}:`, error.message);
+      
+      if (attempt === retries) {
+        console.error(`[API Call #${apiCallCount}] All ${retries} attempts failed`);
+        throw error;
+      }
+      
+      // Exponential backoff
+      const delay = CONFIG.API_RETRY_DELAY * Math.pow(2, attempt - 1);
+      console.log(`[API Call #${apiCallCount}] Waiting ${delay}ms before retry...`);
+      await sleep(delay);
+    }
+  }
+}
+
+// Mock data для тестирования когда API недоступно
+const mockTickers = [
+  { symbol: 'BTCUSDT', lastPrice: '45000', quoteVolume: '500000', priceChangePercent: '2.5' },
+  { symbol: 'ETHUSDT', lastPrice: '3000', quoteVolume: '300000', priceChangePercent: '1.8' },
+  { symbol: 'ADAUSDT', lastPrice: '0.5', quoteVolume: '200000', priceChangePercent: '-1.2' },
+];
+
+const mockKlines = [
+  [1640000000000, '44900', '45100', '44800', '45000', '100', 1640000059999, '4500000', 1000, '50', '2250000', '0'],
+  [1640000060000, '45000', '45200', '44900', '45100', '110', 1640000119999, '4955000', 1100, '55', '2477500', '0'],
+  // ... добавляем еще 29 записей для полного расчета NATR
+];
+
+// Заполняем массив до 31 элемента
+for (let i = mockKlines.length; i < 31; i++) {
+  const prev = mockKlines[i - 1] || mockKlines[0];
+  mockKlines.push([
+    parseInt(prev[0]) + 60000,
+    prev[4], // open = prev close
+    (parseFloat(prev[4]) * (1 + (Math.random() - 0.5) * 0.02)).toFixed(2), // high
+    (parseFloat(prev[4]) * (1 - Math.random() * 0.02)).toFixed(2), // low
+    (parseFloat(prev[4]) * (1 + (Math.random() - 0.5) * 0.01)).toFixed(2), // close
+    '100',
+    parseInt(prev[0]) + 60000 - 1,
+    '4500000',
+    1000,
+    '50',
+    '2250000',
+    '0'
+  ]);
+}
+
+// Генератор mock торговых данных для тестирования
+let mockTradeGenerator = null;
+
+function startMockTradeGenerator() {
+  if (mockTradeGenerator) return;
+  
+  console.log('[Mock] Starting mock trade generator...');
+  mockTradeGenerator = setInterval(() => {
+    const symbols = Object.keys(symbolMeta);
+    if (symbols.length === 0) return;
+    
+    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+    const basePrice = symbol === 'BTCUSDT' ? 45000 : 
+                     symbol === 'ETHUSDT' ? 3000 : 0.5;
+    
+    const price = basePrice * (1 + (Math.random() - 0.5) * 0.001); // 0.1% вариация
+    const qty = Math.random() * 1000 + 100; // от 100 до 1100
+    const volumeUsd = price * qty;
+    
+    if (volumeUsd < CONFIG.MIN_VOLUME_USD) return;
+    
+    if (!tradeVolumeStore[symbol]) {
+      tradeVolumeStore[symbol] = { buys: [], sells: [] };
+    }
+    
+    const isMaker = Math.random() > 0.5;
+    const sideList = isMaker ? 'sells' : 'buys';
+    const ts = Date.now();
+    
+    tradeVolumeStore[symbol][sideList].push({ timestamp: ts, volumeUsd });
+    
+    const lsRatio = calculateLSRatio(symbol);
+    const pattern = {
+      type: 'pattern',
+      symbol,
+      time: new Date(ts).toISOString().slice(11,19),
+      timeStamp: ts,
+      price: price.toFixed(8),
+      volumeUsd: volumeUsd.toFixed(2),
+      volume: qty.toFixed(6),
+      lsRatio
+    };
+    
+    wss.clients.forEach(c => c.readyState === WebSocket.OPEN && c.send(JSON.stringify(pattern)));
+  }, 1000 + Math.random() * 2000); // каждые 1-3 секунды
+  
+  console.log('[Mock] Mock trade generator started');
+}
+
+function stopMockTradeGenerator() {
+  if (mockTradeGenerator) {
+    clearInterval(mockTradeGenerator);
+    mockTradeGenerator = null;
+    console.log('[Mock] Mock trade generator stopped');
+  }
+}
 
 // Подключаем WebSocket к Binance
 async function connectBinanceWS() {
@@ -110,63 +237,108 @@ async function connectBinanceWS() {
 }
 
 async function recreateBinanceWS() {
-  const newSymbols = await getFilteredSymbols();
-  // Если пул не изменился — ничего не делаем
-  if (JSON.stringify(newSymbols) === JSON.stringify(wsSymbols)) return;
-  if (newSymbols.length === 0) return;
-
-  const newStream = newSymbols.map(s => `${s}@trade`).join('/');
-  const newWS = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${newStream}`);
-
-  newWS.on('open', () => {
-    console.log('Reconnected Binance WS with new symbols', new Date().toISOString());
-    wsSymbols = newSymbols;
-    // Только ручной вызов для мгновенного обновления
-    broadcastSummaries();
-    // Закрываем старый wsClient
-    if (wsClient && wsClient.readyState === WebSocket.OPEN) wsClient.close();
-    wsClient = newWS;
-    reconnectAttempts = 0;
-  });
-
-  newWS.on('message', data => {
-    try {
-      const msg = JSON.parse(data);
-      if (!msg.data) return;
-      const { s: symbol, T: ts, q: qtyRaw, m: isMaker, p: priceRaw } = msg.data;
-      const price = parseFloat(priceRaw);
-      const qty = parseFloat(qtyRaw);
-      if (!price || !qty) return;
-      const volumeUsd = price * qty;
-      if (volumeUsd < CONFIG.MIN_VOLUME_USD) return;
-      if (!tradeVolumeStore[symbol]) {
-        tradeVolumeStore[symbol] = { buys: [], sells: [] };
-      }
-      const sideList = isMaker ? 'sells' : 'buys';
-      tradeVolumeStore[symbol][sideList].push({ timestamp: ts, volumeUsd });
-      const lsRatio = calculateLSRatio(symbol);
-      const pattern = {
-        type: 'pattern',
-        symbol,
-        time: new Date(ts).toISOString().slice(11,19),
-        timeStamp: ts,
-        price,
-        volumeUsd: volumeUsd.toFixed(2),
-        volume: qty,
-        lsRatio
-      };
-      wss.clients.forEach(c => c.readyState === WebSocket.OPEN && c.send(JSON.stringify(pattern)));
-    } catch (e) {
-      console.error('WS data error', e);
+  try {
+    console.log('[recreateBinanceWS] Starting WebSocket recreation...');
+    const newSymbols = await getFilteredSymbols();
+    
+    // Если пул не изменился — ничего не делаем
+    if (JSON.stringify(newSymbols) === JSON.stringify(wsSymbols)) {
+      console.log('[recreateBinanceWS] Symbol pool unchanged, skipping reconnection');
+      return;
     }
-  });
+    
+    if (newSymbols.length === 0) {
+      console.log('[recreateBinanceWS] No symbols available, skipping WebSocket creation');
+      return;
+    }
 
-  newWS.on('close', () => {
+    console.log(`[recreateBinanceWS] Creating WebSocket for ${newSymbols.length} symbols`);
+    const newStream = newSymbols.map(s => `${s}@trade`).join('/');
+    const wsUrl = `wss://stream.binance.com:9443/stream?streams=${newStream}`;
+    
+    const newWS = new WebSocket(wsUrl);
+
+    newWS.on('open', () => {
+      console.log(`[recreateBinanceWS] Connected to Binance WS with ${newSymbols.length} symbols at`, new Date().toISOString());
+      wsSymbols = newSymbols;
+      stopMockTradeGenerator(); // Останавливаем mock генератор при успешном подключении
+      // Только ручной вызов для мгновенного обновления
+      broadcastSummaries();
+      // Закрываем старый wsClient
+      if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+        console.log('[recreateBinanceWS] Closing old WebSocket connection');
+        wsClient.close();
+      }
+      wsClient = newWS;
+      reconnectAttempts = 0;
+    });
+
+    newWS.on('message', data => {
+      try {
+        const msg = JSON.parse(data);
+        if (!msg.data) return;
+        const { s: symbol, T: ts, q: qtyRaw, m: isMaker, p: priceRaw } = msg.data;
+        const price = parseFloat(priceRaw);
+        const qty = parseFloat(qtyRaw);
+        if (!price || !qty) return;
+        const volumeUsd = price * qty;
+        if (volumeUsd < CONFIG.MIN_VOLUME_USD) return;
+        if (!tradeVolumeStore[symbol]) {
+          tradeVolumeStore[symbol] = { buys: [], sells: [] };
+        }
+        const sideList = isMaker ? 'sells' : 'buys';
+        tradeVolumeStore[symbol][sideList].push({ timestamp: ts, volumeUsd });
+        const lsRatio = calculateLSRatio(symbol);
+        const pattern = {
+          type: 'pattern',
+          symbol,
+          time: new Date(ts).toISOString().slice(11,19),
+          timeStamp: ts,
+          price,
+          volumeUsd: volumeUsd.toFixed(2),
+          volume: qty,
+          lsRatio
+        };
+        wss.clients.forEach(c => c.readyState === WebSocket.OPEN && c.send(JSON.stringify(pattern)));
+      } catch (e) {
+        console.error('[recreateBinanceWS] WS data processing error:', e.message);
+      }
+    });
+
+    newWS.on('error', (error) => {
+      console.error('[recreateBinanceWS] WebSocket error:', error.message);
+    });
+
+    newWS.on('close', (code, reason) => {
+      console.log(`[recreateBinanceWS] WebSocket closed with code ${code}, reason: ${reason}`);
+      if (reconnectAttempts < CONFIG.RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        const delay = CONFIG.API_RETRY_DELAY * Math.pow(2, reconnectAttempts - 1);
+        console.log(`[recreateBinanceWS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${CONFIG.RECONNECT_ATTEMPTS})`);
+        setTimeout(recreateBinanceWS, delay);
+      } else {
+        console.error('[recreateBinanceWS] Max reconnection attempts reached, starting mock trade generator');
+        wsSymbols = newSymbols; // Сохраняем символы для mock генератора
+        startMockTradeGenerator();
+      }
+    });
+  } catch (error) {
+    console.error('[recreateBinanceWS] Failed to recreate WebSocket:', error.message);
     if (reconnectAttempts < CONFIG.RECONNECT_ATTEMPTS) {
       reconnectAttempts++;
-      setTimeout(recreateBinanceWS, 2000);
+      const delay = CONFIG.API_RETRY_DELAY * Math.pow(2, reconnectAttempts - 1);
+      console.log(`[recreateBinanceWS] Retrying in ${delay}ms (attempt ${reconnectAttempts}/${CONFIG.RECONNECT_ATTEMPTS})`);
+      setTimeout(recreateBinanceWS, delay);
+    } else {
+      console.error('[recreateBinanceWS] All attempts failed, starting mock trade generator');
+      // Если у нас есть символы из getFilteredSymbols, используем их для mock
+      const mockSymbols = Object.keys(symbolMeta);
+      if (mockSymbols.length > 0) {
+        wsSymbols = mockSymbols;
+        startMockTradeGenerator();
+      }
     }
-  });
+  }
 }
 
 // Рассылка метрик для «Списка монет»
@@ -236,10 +408,18 @@ function calculateLSRatio(symbol) {
 // Получаем и фильтруем символы + сохраняем NATR
 async function getFilteredSymbols() {
   try {
-    const { data: tickers } = await axios.get(
-      'https://api.binance.com/api/v3/ticker/24hr',
-      { timeout: 10000 }
-    );
+    console.log('[getFilteredSymbols] Starting symbol fetch...');
+    
+    const tickers = await apiCallWithRetry(async () => {
+      const { data } = await axios.get(
+        'https://api.binance.com/api/v3/ticker/24hr',
+        { timeout: CONFIG.API_TIMEOUT }
+      );
+      return data;
+    });
+
+    console.log(`[getFilteredSymbols] Got ${tickers.length} tickers from API`);
+    
     const filtered = tickers.filter(i =>
       i.symbol.endsWith('USDT') &&
       !i.symbol.includes('1000') &&
@@ -248,15 +428,23 @@ async function getFilteredSymbols() {
       +i.priceChangePercent >= CONFIG.MIN_PRICE_CHANGE_24H
     );
 
+    console.log(`[getFilteredSymbols] ${filtered.length} symbols passed initial filter`);
+
     const result = [];
     for (let i = 0; i < filtered.length; i += 15) {
       const batch = filtered.slice(i, i + 15);
+      console.log(`[getFilteredSymbols] Processing batch ${Math.floor(i/15) + 1}/${Math.ceil(filtered.length/15)}`);
+      
       const res = await Promise.all(batch.map(async tk => {
         try {
-          const { data: klines } = await axios.get(
-            'https://api.binance.com/api/v3/klines',
-            { params: { symbol: tk.symbol, interval: '1m', limit: 31 }, timeout: 10000 }
-          );
+          const klines = await apiCallWithRetry(async () => {
+            const { data } = await axios.get(
+              'https://api.binance.com/api/v3/klines',
+              { params: { symbol: tk.symbol, interval: '1m', limit: 31 }, timeout: CONFIG.API_TIMEOUT }
+            );
+            return data;
+          });
+          
           const price = +tk.lastPrice;
           const natr  = calculateNATR(price, klines);
           // Всегда обновляем NATR для всех монет
@@ -264,15 +452,43 @@ async function getFilteredSymbols() {
           if (natr >= CONFIG.MIN_NATR) {
             return tk.symbol.toLowerCase();
           }
-        } catch {}
+        } catch (e) {
+          console.log(`[getFilteredSymbols] Failed to get klines for ${tk.symbol}: ${e.message}`);
+        }
         return null;
       }));
       result.push(...res.filter(Boolean));
+      
+      // Добавляем небольшую задержку между батчами для снижения нагрузки на API
+      if (i + 15 < filtered.length) {
+        await sleep(CONFIG.API_RATE_LIMIT_DELAY);
+      }
     }
+    
+    console.log(`[getFilteredSymbols] Final result: ${result.length} symbols`);
     return result;
   } catch (e) {
-    console.error('Filter error', e);
-    return [];
+    console.error('[getFilteredSymbols] API completely failed, using mock data:', e.message);
+    
+    // Используем mock данные при полном отказе API
+    console.log('[getFilteredSymbols] Falling back to mock data...');
+    
+    const result = [];
+    for (const ticker of mockTickers) {
+      try {
+        const price = +ticker.lastPrice;
+        const natr = calculateNATR(price, mockKlines);
+        symbolMeta[ticker.symbol] = { natr };
+        if (natr >= CONFIG.MIN_NATR) {
+          result.push(ticker.symbol.toLowerCase());
+        }
+      } catch (e) {
+        console.error(`Error processing mock ticker ${ticker.symbol}:`, e.message);
+      }
+    }
+    
+    console.log(`[getFilteredSymbols] Mock data result: ${result.length} symbols`);
+    return result;
   }
 }
 
@@ -298,13 +514,38 @@ function calculateNATR(price, candles) {
 const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Server: http://localhost:${PORT}`);
-  recreateBinanceWS();
+  console.log(`[Server] Starting with configuration:`, {
+    API_RETRY_ATTEMPTS: CONFIG.API_RETRY_ATTEMPTS,
+    API_RETRY_DELAY: CONFIG.API_RETRY_DELAY,
+    API_TIMEOUT: CONFIG.API_TIMEOUT,
+    SUMMARY_INTERVAL: CONFIG.SUMMARY_INTERVAL
+  });
+  
+  // Инициализация WebSocket подключения
+  recreateBinanceWS().catch(err => {
+    console.error('[Server] Initial WebSocket creation failed:', err.message);
+  });
+  
+  // Запуск интервала для рассылки summary
   summaryIntervalID = setInterval(() => {
     console.log('[setInterval] broadcastSummaries tick', new Date().toISOString());
-    broadcastSummaries();
+    try {
+      broadcastSummaries();
+    } catch (err) {
+      console.error('[setInterval] broadcastSummaries error:', err.message);
+    }
   }, CONFIG.SUMMARY_INTERVAL);
   console.log('[setInterval] broadcastSummaries started');
-  wsReconnectIntervalID = setInterval(recreateBinanceWS, 2 * 60 * 1000);
+  
+  // Запуск интервала для переподключения WebSocket
+  wsReconnectIntervalID = setInterval(() => {
+    try {
+      recreateBinanceWS();
+    } catch (err) {
+      console.error('[setInterval] recreateBinanceWS error:', err.message);
+    }
+  }, 2 * 60 * 1000);
+  console.log('[setInterval] WebSocket reconnection scheduler started');
 });
 
 // Глобальные обработчики ошибок и выхода
