@@ -1,0 +1,41 @@
+.neon-bid-patterns {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 2.2em;
+  font-weight: bold;
+  color: #26ffb4;
+  text-shadow:
+    0 0 8px #26ffb4,
+    0 0 16px #26ffb4,
+    0 0 32px #26ffb4,
+    0 0 64px #26ffb444,
+    0 0 2px #26ffb4;
+  background: rgba(38,255,180,0.08);
+  border-radius: 10px;
+  padding: 18px 38px;
+  display: inline-block;
+  letter-spacing: 2px;
+  box-shadow: 0 0 0 2.5px #26ffb4, 0 0 24px #26ffb444;
+  margin: 24px auto 16px auto;
+  animation: neon-glow 1.5s infinite alternate;
+}
+
+@keyframes neon-glow {
+  from {
+    text-shadow:
+      0 0 8px #26ffb4,
+      0 0 16px #26ffb4,
+      0 0 32px #26ffb4,
+      0 0 64px #26ffb444,
+      0 0 2px #26ffb4;
+    box-shadow: 0 0 0 2.5px #26ffb4, 0 0 24px #26ffb444;
+  }
+  to {
+    text-shadow:
+      0 0 16px #26ffb4,
+      0 0 32px #26ffb4,
+      0 0 64px #26ffb4,
+      0 0 128px #26ffb444,
+      0 0 4px #26ffb4;
+    box-shadow: 0 0 0 2.5px #26ffb4, 0 0 48px #26ffb444;
+  }
+}

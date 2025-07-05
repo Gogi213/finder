@@ -6,19 +6,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Binance Bid Patterns Detector</title>
   <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="bid-patterns-neon.css"/>
 </head>
 <body>
   <div id="container">
     <header>
-      <h1>Bid Patterns Detector</h1>
+      <div style="display:flex;align-items:center;margin-bottom:1.2em;">
+        <div class="neon-bid-patterns" style="margin-right:32px;">Bid patterns detector</div>
+        <!-- остальной header-контент -->
+      </div>
       <div id="controls">
         <div id="lsHighlightControl" style="display:inline-block; margin-right:16px;">
           <label for="lsHighlightValue" style="font-size:0.95em;opacity:0.7;">L/S ≥</label>
-          <input id="lsHighlightValue" type="number" min="1" max="99" step="0.1" value="3" style="width:3em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
+          <input id="lsHighlightValue" type="number" min="1" max="99" step="0.1" value="2.5" style="width:3em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
         </div>
         <div id="deltaHighlightControl" style="display:inline-block; margin-right:16px;">
           <label for="deltaHighlightValue" style="font-size:0.95em;opacity:0.7;">Delta ≥</label>
-          <input id="deltaHighlightValue" type="number" min="-999999" max="999999" step="1" value="1000" style="width:4em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
+          <input id="deltaHighlightValue" type="number" min="-999999" max="999999" step="1" value="10000" style="width:4em; text-align:center; border-radius:3px; border:1px solid #333; background:#222; color:#fff; margin-left:4px;">
         </div>
       </div>
     </header>
@@ -57,9 +61,10 @@
                 <th class="sortable" data-key="time">Время</th>
                 <th class="sortable" data-key="symbol">Монета</th>
                 <th class="sortable" data-key="price">Цена</th>
-                <th class="sortable" data-key="volume">Объём(coin)</th>
+                <th class="sortable" data-key="volume">Объём(c)</th>
                 <th class="sortable" data-key="volumeUsd">Объём ($)</th>
-                <th class="sortable" data-key="lsRatio">L/S</th>
+                <th class="sortable" data-key="lsRatioTrades">L/S(T)</th>
+                <th class="sortable" data-key="lsRatio">L/S(V)</th>
               </tr>
             </thead>
             <tbody id="patterns"></tbody>
@@ -69,6 +74,11 @@
     </main>
   </div>
 
+  <!-- TradingView Lightweight Charts -->
+  <!-- Plotly.js -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="/echart-popup.js"></script>
+  <script src="/lightweight-popup.js"></script>
   <script src="/client/app.js"></script>
 </body>
 </html>

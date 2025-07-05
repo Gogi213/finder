@@ -1,3 +1,125 @@
+/* Стилизация блока подсветки цены на оси Y (crosshair) Plotly */
+.js-plotly-plot .yaxislayer-above .hovertext {
+  background: #232323 !important;
+  border: 1.5px solid #888 !important;
+  color: #fff !important;
+  font-weight: bold;
+  font-size: 1em !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 8px #23232399;
+  opacity: 1 !important;
+  padding: 2px 10px !important;
+}
+/* Скрыть тултип OHLC Plotly на графике (делаем прозрачным) */
+.js-plotly-plot .hoverlayer .hovertext {
+  opacity: 0 !important;
+}
+.active-plotly-row {
+  box-shadow: 0 0 0 2.5px #26ffb4 !important;
+  background: rgba(38,255,180,0.08) !important;
+  color: #26ffb4 !important;
+  font-weight: bold;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.active-plotly-row td {
+  color: #26ffb4 !important;
+  background: transparent !important;
+  font-weight: bold;
+}
+/* --- Plotly popup custom style --- */
+#plotly-popup {
+  animation: lwPopupFadeIn 0.18s;
+  border: 2.5px solid #26ffb4 !important;
+  box-shadow: 0 8px 32px #0f0a 0.5;
+  position: fixed !important;
+  left: 50% !important;
+  top: 50px !important;
+  transform: translateX(-50%) !important;
+  width: 900px !important;
+  max-width: 98vw !important;
+  height: calc(100vh - 80px) !important;
+  max-height: calc(100vh - 40px) !important;
+  min-height: 350px !important;
+  display: flex;
+  flex-direction: column;
+}
+#plotly-popup button#plotly-popup-close {
+  transition: background 0.15s;
+}
+#plotly-popup button#plotly-popup-close:hover {
+  background: #26ffb4;
+  color: #181a20;
+}
+.coin-symbol-cell.active-plotly {
+  border: 2.5px solid #26ffb4 !important;
+  border-radius: 6px;
+  background: rgba(38,255,180,0.08) !important;
+  color: #26ffb4 !important;
+  font-weight: bold;
+  box-shadow: 0 0 0 2px #26ffb455;
+}
+/* --- Plotly popup --- */
+#plotly-popup {
+  animation: lwPopupFadeIn 0.18s;
+}
+#plotly-popup button#plotly-popup-close {
+  transition: background 0.15s;
+}
+#plotly-popup button#plotly-popup-close:hover {
+  background: #ef5350;
+  color: #fff;
+}
+/* --- Lightweight Charts popup --- */
+#lw-popup {
+  animation: lwPopupFadeIn 0.18s;
+}
+@keyframes lwPopupFadeIn {
+  from { opacity: 0; transform: translateY(-30px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+#lw-popup button#lw-popup-close {
+  transition: background 0.15s;
+}
+#lw-popup button#lw-popup-close:hover {
+  background: #ef5350;
+  color: #fff;
+}
+/* Всплывающее окно графика */
+.chart-popup {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #232323;
+  border: 2px solid #4caf50;
+  border-radius: 12px;
+  z-index: 9999;
+  box-shadow: 0 8px 32px #000a;
+  padding: 0;
+  min-width: 1080px;
+  min-height: 760px;
+  animation: popup-fadein 0.08s;
+}
+.chart-popup-content {
+  padding: 18px 18px 12px 18px;
+  position: relative;
+}
+.chart-popup-close {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  font-size: 1.5em;
+  color: #aaa;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.chart-popup-close:hover {
+  color: #f44336;
+}
+@keyframes popup-fadein {
+  from { opacity: 0; transform: translate(-50%, -60%) scale(0.95); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 :root {
   --bg: #121212;
   --fg: #e0e0e0;
@@ -45,14 +167,15 @@ header {
   align-items: center;
   justify-content: space-between;
   background: var(--header-bg);
-  padding: 10px 20px;
+  padding: 4px 14px 0px 14px;
   border-radius: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 header h1 {
-  font-size: 1.15rem; /* уменьшено */
+  font-size: 1.02rem;
   color: var(--accent);
+  margin: 0.1em 0 0.1em 0;
 }
 
 .btn {
@@ -67,9 +190,15 @@ header h1 {
   font-size: 0.85rem; /* уменьшено */
 }
 
-.btn:disabled {
-  opacity: 0.5;
+
+.btn:disabled, .btn.btn--inactive, .btn--inactive {
+  opacity: 0.55;
   cursor: not-allowed;
+  background: #23272f !important;
+  color: #888 !important;
+  border: 1.5px solid #444 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
 }
 
 .btn:hover:not(:disabled) {
@@ -164,7 +293,7 @@ th, td {
   padding: 6px 8px; /* уменьшено */
   text-align: center;
   border-bottom: 1px solid var(--border);
-  font-size: 0.78rem; /* уменьшено */
+  font-size: 0.7rem; /* уменьшено еще больше */
 }
 
 thead {
@@ -179,7 +308,7 @@ th.sortable {
 
 th.sortable:after {
   content: ' ▼';
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   opacity: 0.4;
   margin-left: 4px;
 }
@@ -229,6 +358,12 @@ tbody tr:hover {
   background: var(--header-bg);
 }
 
+/* Выравнивание по левому краю для таблицы монет */
+#coinList th,
+#coinList td {
+  text-align: left;
+}
+
 #coinList tbody {
   display: table-row-group;
   max-height: none;
@@ -246,12 +381,41 @@ tbody tr:hover {
   flex: 1 1 auto;
   min-height: 0;
 }
+
+/* Выравнивание по левому краю для времени и монеты в правой таблице */
+#patternList th:first-child,
+#patternList td:first-child,
+#patternList th:nth-child(2),
+#patternList td:nth-child(2) {
+  text-align: left;
+}
+
+
+#patternList {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  display: block;
+  overflow: auto;
+}
+
+#patternList thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--header-bg, #181c24);
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
 #patternList tbody {
   display: block;
+  width: 100%;
   overflow-y: auto;
-  max-height: 100%;
 }
-#patternList thead, #patternList tbody tr {
+
+#patternList tbody tr {
   display: table;
   width: 100%;
   table-layout: fixed;
